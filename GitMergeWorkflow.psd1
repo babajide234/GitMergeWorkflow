@@ -1,9 +1,9 @@
 @{
     RootModule = 'GitMergeWorkflow.psm1'
-    ModuleVersion = '1.0.0'
+    ModuleVersion = '1.0.1'
     GUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-    Author = 'Expedier Development Team'
-    CompanyName = 'Expedier'
+    Author = 'babajide Tomoshegbo'
+    CompanyName = 'babajide234'
     Copyright = '(c) 2025 Expedier. All rights reserved.'
     Description = 'Automated Git workflow for merging feature branches through staging to develop'
     PowerShellVersion = '5.1'
@@ -12,7 +12,7 @@
     PrivateData = @{
         PSData = @{
             Tags = @('Git', 'Workflow', 'Automation', 'Merge', 'DevOps')
-            ProjectUri = 'https://github.com/expedier/expedier-for-business'
+            ProjectUri = 'https://github.com/babajide234/GitMergeWorkflow'
         }
     }
 }

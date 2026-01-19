@@ -1,6 +1,6 @@
 {
-  "name": "@expedier/git-merge-workflow",
-  "version": "1.0.0",
+  "name": "@babajide234/git-merge-workflow",
+  "version": "1.0.1",
   "description": "Automated Git workflow for merging feature branches through staging to develop",
   "main": "index.js",
   "bin": {
@@ -17,11 +17,11 @@
     "automation",
     "devops"
   ],
-  "author": "Expedier Development Team",
+  "author": "babajide Tomoshegbo",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/expedier/git-merge-workflow.git"
+    "url": "https://github.com/babajide234/GitMergeWorkflow.git"
   },
   "engines": {
     "node": ">=14"

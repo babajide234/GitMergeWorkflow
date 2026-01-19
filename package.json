@@ -1,0 +1,29 @@
+{
+  "name": "@expedier/git-merge-workflow",
+  "version": "1.0.0",
+  "description": "Automated Git workflow for merging feature branches through staging to develop",
+  "main": "index.js",
+  "bin": {
+    "git-merge-workflow": "./bin/cli.js",
+    "gmw": "./bin/cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "git",
+    "workflow",
+    "powershell",
+    "automation",
+    "devops"
+  ],
+  "author": "Expedier Development Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/expedier/git-merge-workflow.git"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}

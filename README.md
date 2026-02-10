@@ -17,7 +17,7 @@ Automate your git merge workflow with safety and ease. This module helps you mer
 You can install this tool globally using npm:
 
 ```bash
-npm install -g @expedier/git-merge-workflow
+npm install -g @babajide234/git-merge-workflow
 ```
 This will make the `gmw` and `git-merge-workflow` commands available in your terminal.
 

@@ -1,0 +1,15 @@
+# Source control
+.git
+.gitignore
+
+# GitHub
+.github/
+
+# Development
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Brain/Artifacts
+.agent/
+.gemini/

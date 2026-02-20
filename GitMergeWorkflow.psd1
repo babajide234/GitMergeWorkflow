@@ -1,6 +1,6 @@
 @{
     RootModule        = 'GitMergeWorkflow.psm1'
-    ModuleVersion     = '1.0.5'
+    ModuleVersion     = '1.0.6'
     GUID              = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     Author            = 'babajide Tomoshegbo'
     CompanyName       = 'babajide234'
@@ -14,6 +14,11 @@
             Tags         = @('Git', 'Workflow', 'Automation', 'Merge', 'DevOps')
             ProjectUri   = 'https://github.com/babajide234/GitMergeWorkflow'
             ReleaseNotes = @"
+## 1.0.6
+- Fix: Resolve false positive remote branch detection caused by git credential-manager stderr warnings polluting ls-remote output.
+- Fix: Use full refs/heads/ refspec prefix in fetch command to prevent remote ref resolution failures.
+- Improvement: Added fallback to create local branch if remote fetch fails unexpectedly.
+
 ## 1.0.5
 - Fix: Ensure correct remote branch referencing and fetching by using full refspecs in ls-remote and fetch commands.
 

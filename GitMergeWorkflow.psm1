@@ -20,7 +20,8 @@ function Get-GitWorkflowConfig {
                 return Get-Content $configPath -Raw | ConvertFrom-Json
             }
         }
-    } catch {
+    }
+    catch {
         Write-Verbose "Error reading config: $_"
     }
     return $null
@@ -41,7 +42,7 @@ function New-GitWorkflowConfig {
     .EXAMPLE
         New-GitWorkflowConfig -TargetBranch "main" -StagingSuffix "-test"
     #>
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [string]$TargetBranch = "develop",
         [string]$StagingSuffix = "-staging",
@@ -58,9 +59,9 @@ function New-GitWorkflowConfig {
     $configPath = Join-Path $gitRoot ".git-merge-workflow.json"
     
     $config = @{
-        TargetBranch = $TargetBranch
+        TargetBranch  = $TargetBranch
         StagingSuffix = $StagingSuffix
-        Remote = $Remote
+        Remote        = $Remote
     }
 
     $json = $config | ConvertTo-Json -Depth 2
@@ -104,18 +105,18 @@ function Invoke-GitMergeWorkflow {
         git-merge-workflow -CommitMessage "Feature: Added new component" -WhatIf
     #>
     
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$CommitMessage = "",
         
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$StagingBranch = "",
         
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$TargetBranch = "",
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$Remote = ""
     )
     
@@ -137,19 +138,19 @@ function Invoke-GitMergeWorkflow {
     function Exec-Git {
         [CmdletBinding()]
         param(
-            [Parameter(Mandatory=$true, Position=0)]
+            [Parameter(Mandatory = $true, Position = 0)]
             [string]$Command,
 
-            [Parameter(Mandatory=$false)]
+            [Parameter(Mandatory = $false)]
             [string]$ErrorMessage,
 
-            [Parameter(Mandatory=$false)]
+            [Parameter(Mandatory = $false)]
             [switch]$IgnoreError,
 
-            [Parameter(Mandatory=$false)]
+            [Parameter(Mandatory = $false)]
             [switch]$ReturnOutput,
 
-            [Parameter(ValueFromRemainingArguments=$true)]
+            [Parameter(ValueFromRemainingArguments = $true)]
             [string[]]$Arguments
         )
 
@@ -163,7 +164,8 @@ function Invoke-GitMergeWorkflow {
 
             if ($ReturnOutput) {
                 return $output
-            } elseif ($output) {
+            }
+            elseif ($output) {
                 # If not capturing output, write it to the stream (except errors which we handle below)
                 $output | ForEach-Object { Write-Verbose $_ }
             }
@@ -181,7 +183,8 @@ function Invoke-GitMergeWorkflow {
     # Check if we're in a git repository
     try {
         Exec-Git "rev-parse" "--is-inside-work-tree" -ErrorMessage "Not a git repository" -ReturnOutput | Out-Null
-    } catch {
+    }
+    catch {
         Write-Error $_.Exception.Message
         return
     }
@@ -234,7 +237,8 @@ function Invoke-GitMergeWorkflow {
                     Exec-Git "commit" "-m" "$CommitMessage" -ErrorMessage "Failed to commit changes"
                     Write-Host "Changes committed!" -ForegroundColor Green
                 }
-            } else {
+            }
+            else {
                 Write-Error "You have uncommitted changes! Please commit them first or use -CommitMessage parameter"
                 git status
                 return
@@ -247,24 +251,38 @@ function Invoke-GitMergeWorkflow {
         $branchExists = git branch --list $StagingBranch
         if (-not $branchExists) {
             Write-Host "`nStaging branch doesn't exist locally. Checking remote..." -ForegroundColor Yellow
-            # Check if exists on remote (explicit check to avoid silent failures)
+            # Check if exists on remote using a direct git command to avoid
+            # false positives from stderr warnings (e.g. credential-manager)
             $remoteBranchExists = $false
             try {
-                $lsRemote = Exec-Git -Command "ls-remote" -Arguments "--heads", $Remote, "refs/heads/$StagingBranch" -ReturnOutput
-                if ($lsRemote) { $remoteBranchExists = $true }
-            } catch {
+                # Use & git directly so stderr warnings don't pollute the result.
+                # ls-remote --heads returns lines like "<hash>\trefs/heads/<branch>" for matches.
+                $lsOutput = & git ls-remote --heads $Remote "refs/heads/$StagingBranch" 2>$null
+                if ($lsOutput -and $lsOutput -match "refs/heads/$([regex]::Escape($StagingBranch))") {
+                    $remoteBranchExists = $true
+                }
+            }
+            catch {
                 Write-Warning "Could not check remote branch: $_"
             }
             
             if ($remoteBranchExists) {
                 Write-Host "Fetching remote staging branch..." -ForegroundColor Yellow
-                Exec-Git -Command "fetch" -Arguments $Remote, "${StagingBranch}:refs/remotes/$Remote/$StagingBranch"
-                Exec-Git -Command "checkout" -Arguments "-b", $StagingBranch, "$Remote/$StagingBranch"
-            } else {
+                try {
+                    Exec-Git -Command "fetch" -Arguments $Remote, "refs/heads/${StagingBranch}:refs/remotes/$Remote/$StagingBranch"
+                    Exec-Git -Command "checkout" -Arguments "-b", $StagingBranch, "$Remote/$StagingBranch"
+                }
+                catch {
+                    Write-Warning "Failed to fetch remote staging branch. Creating new local branch instead."
+                    Exec-Git -Command "checkout" -Arguments "-b", $StagingBranch
+                }
+            }
+            else {
                 Write-Host "Creating new staging branch..." -ForegroundColor Yellow
                 Exec-Git -Command "checkout" -Arguments "-b", $StagingBranch
             }
-        } else {
+        }
+        else {
             Write-Host "Checking out staging branch..." -ForegroundColor Yellow
             Exec-Git -Command "checkout" -Arguments $StagingBranch
         }
@@ -285,12 +303,14 @@ function Invoke-GitMergeWorkflow {
         try {
             Exec-Git -Command "push" -Arguments "-u", $Remote, $StagingBranch -ErrorMessage "Failed to push staging branch"
             Write-Host "Staging branch pushed!" -ForegroundColor Green
-        } catch {
+        }
+        catch {
             Write-Warning "Failed to push staging branch to remote."
             Write-Warning "Error: $_"
             if ($PSCmdlet.ShouldContinue("Do you want to skip pushing the staging branch and continue to merge into $TargetBranch?", "Skip Staging Push")) {
                 Write-Host "Skipping staging push..." -ForegroundColor Yellow
-            } else {
+            }
+            else {
                 throw $_
             }
         }
@@ -321,10 +341,12 @@ function Invoke-GitMergeWorkflow {
         Write-Host "  ✓ Merged: $originalBranch → $StagingBranch → $TargetBranch" -ForegroundColor White
         Write-Host "  ✓ All changes pushed to remote`n" -ForegroundColor White
 
-    } catch {
+    }
+    catch {
         Write-Error $_.Exception.Message
         Write-Host "`nWorkflow failed. Attempting to return to original branch..." -ForegroundColor Red
-    } finally {
+    }
+    finally {
         # Return to original branch
         $finalBranch = (git branch --show-current).Trim()
         if ($originalBranch -and $finalBranch -ne $originalBranch) {

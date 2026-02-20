@@ -250,7 +250,7 @@ function Invoke-GitMergeWorkflow {
             # Check if exists on remote (explicit check to avoid silent failures)
             $remoteBranchExists = $false
             try {
-                $lsRemote = Exec-Git -Command "ls-remote" -Arguments "--heads", $Remote, $StagingBranch -ReturnOutput
+                $lsRemote = Exec-Git -Command "ls-remote" -Arguments "--heads", $Remote, "refs/heads/$StagingBranch" -ReturnOutput
                 if ($lsRemote) { $remoteBranchExists = $true }
             } catch {
                 Write-Warning "Could not check remote branch: $_"
@@ -258,7 +258,7 @@ function Invoke-GitMergeWorkflow {
             
             if ($remoteBranchExists) {
                 Write-Host "Fetching remote staging branch..." -ForegroundColor Yellow
-                Exec-Git -Command "fetch" -Arguments $Remote, $StagingBranch
+                Exec-Git -Command "fetch" -Arguments $Remote, "${StagingBranch}:refs/remotes/$Remote/$StagingBranch"
                 Exec-Git -Command "checkout" -Arguments "-b", $StagingBranch, "$Remote/$StagingBranch"
             } else {
                 Write-Host "Creating new staging branch..." -ForegroundColor Yellow

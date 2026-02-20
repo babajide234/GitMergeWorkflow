@@ -1,6 +1,6 @@
 {
   "name": "@babajide234/git-merge-workflow",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": false,
   "publishConfig": {
     "access": "public"

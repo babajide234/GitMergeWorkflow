@@ -1,0 +1,26 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Dashboard build files
+dashboard/dist/
+dist/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# PowerShell
+*.ps1xml
+*.xml
+*.err.txt
+*.log
+
+# Git config (workflow specific)
+# Depending on preference you might want to version .git-merge-workflow.json,
+# but it's often a user-specific config
+# .git-merge-workflow.json

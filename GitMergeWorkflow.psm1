@@ -46,7 +46,9 @@ function New-GitWorkflowConfig {
     param(
         [string]$TargetBranch = "develop",
         [string]$StagingSuffix = "-staging",
-        [string]$Remote = "origin"
+        [string]$Remote = "origin",
+        [string]$Strategy = "Merge",
+        [string]$PreMergeHook = ""
     )
 
     # Check if in git repo
@@ -62,6 +64,8 @@ function New-GitWorkflowConfig {
         TargetBranch  = $TargetBranch
         StagingSuffix = $StagingSuffix
         Remote        = $Remote
+        Strategy      = $Strategy
+        PreMergeHook  = $PreMergeHook
     }
 
     $json = $config | ConvertTo-Json -Depth 2
@@ -117,7 +121,10 @@ function Invoke-GitMergeWorkflow {
         [string]$TargetBranch = "",
 
         [Parameter(Mandatory = $false)]
-        [string]$Remote = ""
+        [string]$Remote = "",
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$DryRun
     )
     
     # Load configuration
@@ -133,6 +140,8 @@ function Invoke-GitMergeWorkflow {
     }
     
     $stagingSuffix = if ($config.StagingSuffix) { $config.StagingSuffix } else { "-staging" }
+    $strategy = if ($config.Strategy) { $config.Strategy } else { "Merge" }
+    $preMergeHook = if ($config.PreMergeHook) { $config.PreMergeHook } else { "" }
 
     # Internal helper to execute git commands with error handling
     function Exec-Git {
@@ -157,6 +166,11 @@ function Invoke-GitMergeWorkflow {
         $cmdDesc = "git $Command $Arguments"
         
         if ($PSCmdlet.ShouldProcess("Git Repository", "Execute: $cmdDesc")) {
+            if ($DryRun) {
+                Write-Output "[DryRun] Would execute: $cmdDesc"
+                return
+            }
+            
             # Construct the command to run
             # Note: We use & operator to run git with arguments
             $output = & git $Command $Arguments 2>&1
@@ -293,8 +307,24 @@ function Invoke-GitMergeWorkflow {
         Exec-Git -Command "pull" -Arguments $Remote, $StagingBranch -IgnoreError
         
         # Merge current branch into staging
+        if ($preMergeHook) {
+            Write-Output "`nExecuting PreMergeHook: $preMergeHook"
+            if (-not $DryRun) {
+                Invoke-Expression $preMergeHook
+                if ($LASTEXITCODE -ne 0) { throw "PreMergeHook failed ($LASTEXITCODE)" }
+            }
+            else {
+                Write-Output "[DryRun] Would execute hook: $preMergeHook"
+            }
+        }
+
         Write-Host "`nMerging $currentBranch into $StagingBranch..." -ForegroundColor Yellow
-        Exec-Git -Command "merge" -Arguments $currentBranch, "--no-ff", "-m", "Merge $currentBranch into $StagingBranch" -ErrorMessage "Merge conflict detected in staging! Please resolve conflicts manually."
+        if ($strategy -eq "Rebase") {
+            Exec-Git -Command "rebase" -Arguments $currentBranch -ErrorMessage "Rebase conflict detected in staging! Please resolve conflicts manually."
+        }
+        else {
+            Exec-Git -Command "merge" -Arguments $currentBranch, "--no-ff", "-m", "Merge $currentBranch into $StagingBranch" -ErrorMessage "Merge conflict detected in staging! Please resolve conflicts manually."
+        }
         
         Write-Host "Successfully merged to staging!" -ForegroundColor Green
         
@@ -326,8 +356,24 @@ function Invoke-GitMergeWorkflow {
         Exec-Git "pull" $Remote $TargetBranch -ErrorMessage "Failed to pull $TargetBranch"
         
         # Merge staging into target
+        if ($preMergeHook) {
+            Write-Output "`nExecuting PreMergeHook: $preMergeHook"
+            if (-not $DryRun) {
+                Invoke-Expression $preMergeHook
+                if ($LASTEXITCODE -ne 0) { throw "PreMergeHook failed ($LASTEXITCODE)" }
+            }
+            else {
+                Write-Output "[DryRun] Would execute hook: $preMergeHook"
+            }
+        }
+
         Write-Host "`nMerging $StagingBranch into $TargetBranch..." -ForegroundColor Yellow
-        Exec-Git "merge" $StagingBranch "--no-ff" "-m" "Merge $StagingBranch into $TargetBranch" -ErrorMessage "Merge conflict detected in target! Please resolve conflicts manually."
+        if ($strategy -eq "Rebase") {
+            Exec-Git "rebase" $StagingBranch -ErrorMessage "Rebase conflict detected in target! Please resolve conflicts manually."
+        }
+        else {
+            Exec-Git "merge" $StagingBranch "--no-ff" "-m" "Merge $StagingBranch into $TargetBranch" -ErrorMessage "Merge conflict detected in target! Please resolve conflicts manually."
+        }
         
         Write-Host "Successfully merged to target!" -ForegroundColor Green
         
@@ -344,6 +390,16 @@ function Invoke-GitMergeWorkflow {
     }
     catch {
         Write-Error $_.Exception.Message
+        
+        if (-not $DryRun) {
+            $mergeStatus = git status --porcelain 2>$null
+            if ($mergeStatus -match "(UU|AA|DD|UD|DU|AU|UA)") {
+                Write-Host "`nMerge conflict detected. Aborting to restore clean state..." -ForegroundColor Yellow
+                git merge --abort 2>$null | Out-Null
+                git rebase --abort 2>$null | Out-Null
+            }
+        }
+
         Write-Host "`nWorkflow failed. Attempting to return to original branch..." -ForegroundColor Red
     }
     finally {

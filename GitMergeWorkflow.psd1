@@ -1,6 +1,6 @@
 @{
     RootModule        = 'GitMergeWorkflow.psm1'
-    ModuleVersion     = '1.0.6'
+    ModuleVersion     = '1.0.7'
     GUID              = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
     Author            = 'babajide Tomoshegbo'
     CompanyName       = 'babajide234'
@@ -14,6 +14,13 @@
             Tags         = @('Git', 'Workflow', 'Automation', 'Merge', 'DevOps')
             ProjectUri   = 'https://github.com/babajide234/GitMergeWorkflow'
             ReleaseNotes = @"
+## 1.0.7
+- Remove Strategy=Rebase (always merge --no-ff).
+- PreMergeHook must be a script file inside the repo; no Invoke-Expression.
+- Add -DryRun and -SkipStagingPush; fail closed when staging push fails non-interactively.
+- Commit helper stages tracked files only (git add -u).
+- npm CLI invokes the module via bin/run.ps1 -File.
+
 ## 1.0.6
 - Fix: Resolve false positive remote branch detection caused by git credential-manager stderr warnings polluting ls-remote output.
 - Fix: Use full refs/heads/ refspec prefix in fetch command to prevent remote ref resolution failures.

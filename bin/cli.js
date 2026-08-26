@@ -3,19 +3,9 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
-// Path to the PowerShell module
-const modulePath = path.resolve(__dirname, '../GitMergeWorkflow.psd1');
-
-// Arguments passed to the CLI
 const args = process.argv.slice(2);
-
-// Determine which PowerShell executable to use
-// On Windows: try 'pwsh' (PowerShell Core) first, fallback to 'powershell' (Windows PowerShell)
-// On macOS/Linux: must use 'pwsh'
 const isWin = process.platform === 'win32';
 const psExecutable = isWin ? 'powershell' : 'pwsh';
-
-// Path to the PowerShell wrapper script
 const scriptPath = path.resolve(__dirname, 'run.ps1');
 
 const child = spawn(psExecutable, ['-NoProfile', '-File', scriptPath, ...args], {

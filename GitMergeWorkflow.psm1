@@ -39,6 +39,9 @@ function New-GitWorkflowConfig {
         The suffix for staging branches (default: -staging)
     .PARAMETER Remote
         The default remote name (default: origin)
+    .PARAMETER PreMergeHook
+        Optional path (relative to the repo root) to a script run before each merge.
+        Must be a file inside the repository (.ps1, .sh, .cmd, or .bat).
     .EXAMPLE
         New-GitWorkflowConfig -TargetBranch "main" -StagingSuffix "-test"
     #>
@@ -46,7 +49,8 @@ function New-GitWorkflowConfig {
     param(
         [string]$TargetBranch = "develop",
         [string]$StagingSuffix = "-staging",
-        [string]$Remote = "origin"
+        [string]$Remote = "origin",
+        [string]$PreMergeHook = ""
     )
 
     # Check if in git repo
@@ -62,6 +66,9 @@ function New-GitWorkflowConfig {
         TargetBranch  = $TargetBranch
         StagingSuffix = $StagingSuffix
         Remote        = $Remote
+    }
+    if ($PreMergeHook) {
+        $config.PreMergeHook = $PreMergeHook
     }
 
     $json = $config | ConvertTo-Json -Depth 2
@@ -97,6 +104,10 @@ function Invoke-GitMergeWorkflow {
     .PARAMETER Remote
         Optional remote name.
         Defaults to 'origin' or value in configuration file.
+    .PARAMETER DryRun
+        Print git commands without executing them.
+    .PARAMETER SkipStagingPush
+        If pushing the staging branch fails, continue to the target merge instead of prompting.
     .EXAMPLE
         Invoke-GitMergeWorkflow
     .EXAMPLE
@@ -117,7 +128,13 @@ function Invoke-GitMergeWorkflow {
         [string]$TargetBranch = "",
 
         [Parameter(Mandatory = $false)]
-        [string]$Remote = ""
+        [string]$Remote = "",
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$DryRun,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipStagingPush
     )
     
     # Load configuration
@@ -133,6 +150,56 @@ function Invoke-GitMergeWorkflow {
     }
     
     $stagingSuffix = if ($config.StagingSuffix) { $config.StagingSuffix } else { "-staging" }
+    $preMergeHook = if ($config.PreMergeHook) { $config.PreMergeHook } else { "" }
+    $gitRoot = (git rev-parse --show-toplevel 2>$null)
+
+    if ($config.Strategy -and $config.Strategy -ne "Merge") {
+        Write-Warning "Config Strategy '$($config.Strategy)' is ignored. This workflow always uses merge --no-ff."
+    }
+
+    function Invoke-RepoHook {
+        param([string]$HookPath)
+
+        if ([string]::IsNullOrWhiteSpace($HookPath)) { return }
+
+        if (-not $gitRoot) {
+            throw "PreMergeHook requires a git repository root."
+        }
+
+        $resolved = if ([System.IO.Path]::IsPathRooted($HookPath)) {
+            [System.IO.Path]::GetFullPath($HookPath)
+        }
+        else {
+            [System.IO.Path]::GetFullPath((Join-Path $gitRoot $HookPath))
+        }
+
+        $rootFull = [System.IO.Path]::GetFullPath($gitRoot)
+        $rootPrefix = if ($rootFull.EndsWith([System.IO.Path]::DirectorySeparatorChar)) { $rootFull } else { "$rootFull$([System.IO.Path]::DirectorySeparatorChar)" }
+        if ($resolved -ne $rootFull -and -not $resolved.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "PreMergeHook must be a file inside the repository: $HookPath"
+        }
+
+        if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+            throw "PreMergeHook is not a file: $resolved"
+        }
+
+        $ext = [System.IO.Path]::GetExtension($resolved).ToLowerInvariant()
+        $allowed = @(".ps1", ".sh", ".bash", ".cmd", ".bat")
+        if ($allowed -notcontains $ext) {
+            throw "PreMergeHook must be a script ($($allowed -join ', ')). Got '$ext'."
+        }
+
+        if ($DryRun) {
+            Write-Output "[DryRun] Would execute hook: $resolved"
+            return
+        }
+
+        Write-Host "`nExecuting PreMergeHook: $resolved" -ForegroundColor Yellow
+        & $resolved
+        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            throw "PreMergeHook failed ($LASTEXITCODE)"
+        }
+    }
 
     # Internal helper to execute git commands with error handling
     function Exec-Git {
@@ -157,6 +224,11 @@ function Invoke-GitMergeWorkflow {
         $cmdDesc = "git $Command $Arguments"
         
         if ($PSCmdlet.ShouldProcess("Git Repository", "Execute: $cmdDesc")) {
+            if ($DryRun) {
+                Write-Output "[DryRun] Would execute: $cmdDesc"
+                return
+            }
+            
             # Construct the command to run
             # Note: We use & operator to run git with arguments
             $output = & git $Command $Arguments 2>&1
@@ -231,11 +303,11 @@ function Invoke-GitMergeWorkflow {
         $status = git status --porcelain
         if ($status) {
             if ($CommitMessage) {
-                Write-Host "`nCommitting changes..." -ForegroundColor Yellow
-                if ($PSCmdlet.ShouldProcess("Current Branch", "Add all changes and commit with message '$CommitMessage'")) {
-                    Exec-Git "add" "." -ErrorMessage "Failed to add changes"
+                Write-Host "`nCommitting tracked changes..." -ForegroundColor Yellow
+                if ($PSCmdlet.ShouldProcess("Current Branch", "Stage tracked files and commit with message '$CommitMessage'")) {
+                    Exec-Git "add" "-u" -ErrorMessage "Failed to stage tracked changes"
                     Exec-Git "commit" "-m" "$CommitMessage" -ErrorMessage "Failed to commit changes"
-                    Write-Host "Changes committed!" -ForegroundColor Green
+                    Write-Host "Tracked changes committed!" -ForegroundColor Green
                 }
             }
             else {
@@ -293,6 +365,8 @@ function Invoke-GitMergeWorkflow {
         Exec-Git -Command "pull" -Arguments $Remote, $StagingBranch -IgnoreError
         
         # Merge current branch into staging
+        Invoke-RepoHook -HookPath $preMergeHook
+
         Write-Host "`nMerging $currentBranch into $StagingBranch..." -ForegroundColor Yellow
         Exec-Git -Command "merge" -Arguments $currentBranch, "--no-ff", "-m", "Merge $currentBranch into $StagingBranch" -ErrorMessage "Merge conflict detected in staging! Please resolve conflicts manually."
         
@@ -307,11 +381,19 @@ function Invoke-GitMergeWorkflow {
         catch {
             Write-Warning "Failed to push staging branch to remote."
             Write-Warning "Error: $_"
-            if ($PSCmdlet.ShouldContinue("Do you want to skip pushing the staging branch and continue to merge into $TargetBranch?", "Skip Staging Push")) {
-                Write-Host "Skipping staging push..." -ForegroundColor Yellow
+            if ($SkipStagingPush) {
+                Write-Host "Skipping staging push (-SkipStagingPush)..." -ForegroundColor Yellow
+            }
+            elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+                if ($PSCmdlet.ShouldContinue("Do you want to skip pushing the staging branch and continue to merge into $TargetBranch?", "Skip Staging Push")) {
+                    Write-Host "Skipping staging push..." -ForegroundColor Yellow
+                }
+                else {
+                    throw $_
+                }
             }
             else {
-                throw $_
+                throw "Failed to push staging branch (non-interactive; pass -SkipStagingPush to continue). $_"
             }
         }
         
@@ -326,6 +408,8 @@ function Invoke-GitMergeWorkflow {
         Exec-Git "pull" $Remote $TargetBranch -ErrorMessage "Failed to pull $TargetBranch"
         
         # Merge staging into target
+        Invoke-RepoHook -HookPath $preMergeHook
+
         Write-Host "`nMerging $StagingBranch into $TargetBranch..." -ForegroundColor Yellow
         Exec-Git "merge" $StagingBranch "--no-ff" "-m" "Merge $StagingBranch into $TargetBranch" -ErrorMessage "Merge conflict detected in target! Please resolve conflicts manually."
         
@@ -344,6 +428,16 @@ function Invoke-GitMergeWorkflow {
     }
     catch {
         Write-Error $_.Exception.Message
+        
+        if (-not $DryRun) {
+            $mergeStatus = git status --porcelain 2>$null
+            if ($mergeStatus -match "(UU|AA|DD|UD|DU|AU|UA)") {
+                Write-Host "`nMerge conflict detected. Aborting to restore clean state..." -ForegroundColor Yellow
+                git merge --abort 2>$null | Out-Null
+                git rebase --abort 2>$null | Out-Null
+            }
+        }
+
         Write-Host "`nWorkflow failed. Attempting to return to original branch..." -ForegroundColor Red
     }
     finally {
